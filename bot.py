@@ -146,17 +146,28 @@ async def upload(bot: Client, m: Message):
 
             # 3. CLASSPLUS / DRM LOGIC
             elif "classplus" in url or "cpvod" in url:
-                clean_url = url.replace("master.m3u8", "master.mpd").replace("?quality=auto", "")
+                # 🚨 यहाँ से हमने .mpd वाला रिप्लेसमेंट हटा दिया है। API को असली .m3u8 लिंक ही चाहिए।
+                clean_url = url.replace("?quality=auto", "")
                 
                 prog = await m.reply_text(Show + "\n\n🔐 **DRM Decryption Started...**")
                 
-                # Passing the user-provided Token directly
+                # Token और असली m3u8 URL पास कर रहे हैं
                 drm_data = generate_drm_keys(clean_url, cp_token)
                 
                 if "error" in drm_data:
-                    await prog.edit(f"❌ **DRM Error:** `{drm_data['error']}`\n\n⚠️ Ensure your Classplus Token is valid and fresh!")
+                    await prog.edit(f"❌ **DRM Error:** `{drm_data['error']}`")
                     failed_count += 1
                     continue
+                
+                mpd_link = drm_data["mpd_url"]
+                keys_list = drm_data["keys"]
+                keys_string = " ".join([f"--key {k}" for k in keys_list])
+                
+                res_file = await helper.decrypt_and_merge_video(mpd_link, keys_string, "./downloads/", name, raw_res)
+                await prog.delete(True)
+                await helper.send_vid(bot, m, cc, res_file, thumb, name, prog)
+                await asyncio.sleep(1)
+                continue
                 
                 mpd_link = drm_data["mpd_url"]
                 keys_list = drm_data["keys"]
