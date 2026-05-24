@@ -87,10 +87,17 @@ async def upload(bot: Client, m: Message):
     CR = "Group Admin:)™" if input3.text == '1' else input3.text
     await input3.delete(True)
    
+    # 👉 यहाँ बॉट आपसे Token मांगेगा
     await editable.edit("**𝗘𝗻𝘁𝗲𝗿 𝗪𝗼𝗿𝗸𝗶𝗻𝗴 𝗧𝗼𝗸𝗲𝗻 (Classplus)**\nSend `1` if no DRM videos in this list.")
     input4: Message = await bot.listen(editable.chat.id)
     cp_token = input4.text
     await input4.delete(True)
+
+    # 👉 यहाँ बॉट आपसे Cookie मांगेगा (नया फीचर)
+    await editable.edit("**𝗘𝗻𝘁𝗲𝗿 𝗬𝗼𝘂𝗿 𝗕𝗿𝗼𝘄𝘀𝗲𝗿 𝗖𝗼𝗼𝗸𝗶𝗲 (Login Session)**\nBrowser Console ke Network tab se 'Cookie' copy karke bhejein:\nSend `1` if no DRM videos.")
+    input5: Message = await bot.listen(editable.chat.id)
+    cp_cookie = input5.text
+    await input5.delete(True)
 
     await editable.edit("𝗡𝗼𝘄 𝗦𝗲𝗻𝗱 𝗧𝗵𝗲 𝗧𝗵𝘂𝗺𝗯 𝗨𝗿𝗹 (Eg: https://envs.sh/Hlb.jpg)\n𝗢𝗿 𝗜𝗳 𝗗𝗼𝗻'𝘁 𝗪𝗮𝗻𝘁 𝗧𝗵𝗨𝗺𝗯𝗻𝗮𝗶𝗹 𝗦𝗲𝗻𝗱 = `no`")
     input6 = await bot.listen(editable.chat.id)
@@ -146,28 +153,18 @@ async def upload(bot: Client, m: Message):
 
             # 3. CLASSPLUS / DRM LOGIC
             elif "classplus" in url or "cpvod" in url:
-                # 🚨 यहाँ से हमने .mpd वाला रिप्लेसमेंट हटा दिया है। API को असली .m3u8 लिंक ही चाहिए।
+                # 🚨 यहाँ .mpd वाला रिप्लेसमेंट हटा दिया गया है
                 clean_url = url.replace("?quality=auto", "")
                 
                 prog = await m.reply_text(Show + "\n\n🔐 **DRM Decryption Started...**")
                 
-                # Token और असली m3u8 URL पास कर रहे हैं
-                drm_data = generate_drm_keys(clean_url, cp_token)
+                # 👉 Token और Cookie दोनों पास हो रहे हैं
+                drm_data = generate_drm_keys(clean_url, cp_token, cp_cookie)
                 
                 if "error" in drm_data:
                     await prog.edit(f"❌ **DRM Error:** `{drm_data['error']}`")
                     failed_count += 1
                     continue
-                
-                mpd_link = drm_data["mpd_url"]
-                keys_list = drm_data["keys"]
-                keys_string = " ".join([f"--key {k}" for k in keys_list])
-                
-                res_file = await helper.decrypt_and_merge_video(mpd_link, keys_string, "./downloads/", name, raw_res)
-                await prog.delete(True)
-                await helper.send_vid(bot, m, cc, res_file, thumb, name, prog)
-                await asyncio.sleep(1)
-                continue
                 
                 mpd_link = drm_data["mpd_url"]
                 keys_list = drm_data["keys"]
