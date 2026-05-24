@@ -1,5 +1,9 @@
-flask
-lxml
+pyrogram
+tgcrypto
+pyromod
 requests
 beautifulsoup4
 pywidevine
+yt-dlp
+lxml
+cloudscraper
