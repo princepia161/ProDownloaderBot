@@ -1,10 +1,12 @@
 import os
 import glob
-import requests
 from bs4 import BeautifulSoup
 from pywidevine.cdm import Cdm
 from pywidevine.device import Device
 from pywidevine.pssh import PSSH
+
+# यहाँ हम नॉर्मल requests की जगह curl_cffi का इस्तेमाल कर रहे हैं
+from curl_cffi import requests as spoof_requests
 
 def wvd_check():
     try:
@@ -15,34 +17,39 @@ def wvd_check():
 def generate_drm_keys(video_url, user_token):
     wvd = wvd_check()
     
-    # 1. Token Cleanup: टेलीग्राम द्वारा डाले गए किसी भी स्पेस या नई लाइन को पूरी तरह खत्म करना
     clean_token = ''.join(user_token.split())
 
-    # 2. Advance Headers: Classplus को 100% असली ब्राउज़र होने का यकीन दिलाना
     headers = {
         'x-access-token': clean_token,
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         'Accept': 'application/json, text/plain, */*',
         'Origin': 'https://web.classplusapp.com',
         'Referer': 'https://web.classplusapp.com/',
-        'Api-Version': '50',
-        'Device-Id': 'Web-Browser'
+        'Sec-Ch-Ua': '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+        'Sec-Ch-Ua-Mobile': '?0',
+        'Sec-Ch-Ua-Platform': '"Windows"',
+        'Sec-Fetch-Dest': 'empty',
+        'Sec-Fetch-Mode': 'cors',
+        'Sec-Fetch-Site': 'same-site'
     }
 
     api_url = f'https://api.classplusapp.com/cams/uploader/video/jw-signed-url?url={video_url}'
     
     try:
-        response = requests.get(api_url, headers=headers).json()
+        # impersonate="chrome120" ही असली जादू है, यह Classplus WAF को बायपास कर देगा
+        response_obj = spoof_requests.get(api_url, headers=headers, impersonate="chrome120")
+        response = response_obj.json()
     except Exception as e:
-        return {"error": f"API Request Blocked. Error: {e}"}
+        return {"error": f"Cloudflare/WAF Blocked Request: {e}"}
 
     if response.get('status') != 'ok':
-        return {"error": f"API Error: {response.get('error', 'Bad token')} - Server rejected the IP or Token."}
+        return {"error": f"API Error: {response.get('error', 'Bad token')} - Update Token & try again."}
 
     mpd = response['drmUrls']['manifestUrl']
     lic = response['drmUrls']['licenseUrl']
     
-    mpd_response = requests.get(mpd)
+    # MPD फाइल लाने के लिए भी Chrome Spoofing
+    mpd_response = spoof_requests.get(mpd, impersonate="chrome120")
     soup = BeautifulSoup(mpd_response.text, 'xml')
 
     uuid_tag = soup.find('ContentProtection', attrs={'schemeIdUri': 'urn:uuid:edef8ba9-79d6-4ace-a3c8-27dcd51d21ed'})
@@ -57,7 +64,9 @@ def generate_drm_keys(video_url, user_token):
     session_id = cdm.open()
     
     challenge = cdm.get_license_challenge(session_id, ipssh)
-    licence = requests.post(lic, data=challenge, headers=headers)
+    
+    # License Key लाने के लिए POST रिक्वेस्ट में भी Spoofing
+    licence = spoof_requests.post(lic, data=challenge, headers=headers, impersonate="chrome120")
     
     if licence.status_code != 200:
         cdm.close(session_id)
