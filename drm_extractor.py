@@ -1,6 +1,5 @@
 import os
 import glob
-import re
 from bs4 import BeautifulSoup
 from pywidevine.cdm import Cdm
 from pywidevine.device import Device
@@ -11,49 +10,40 @@ def wvd_check():
     try:
         return glob.glob(f'{os.getcwd()}/WVDs/*.wvd')[0]
     except IndexError:
-        raise FileNotFoundError("WVD file missing in folder.")
+        raise FileNotFoundError("WVD file not found in 'WVDs' folder.")
 
-def parse_curl_headers(curl_text):
-    """AI System: cURL string se browser ke saare asli headers nikalna"""
-    headers = {}
-    try:
-        # Regex to extract all -H headers perfectly
-        pattern = r"-H\s+['\"](.*?)['\"]"
-        matches = re.findall(pattern, curl_text)
-        for match in matches:
-            if ':' in match:
-                key, val = match.split(':', 1)
-                # In 3 headers ko drop karna zaroori hai error se bachne ke liye
-                if key.lower() not in ['host', 'content-length', 'accept-encoding']:
-                    headers[key.strip()] = val.strip()
-    except Exception as e:
-        print(f"Header parsing error: {e}")
-    return headers
-
-def generate_drm_keys(video_url, curl_text):
+def generate_drm_keys(video_url, user_token):
     wvd = wvd_check()
-    
-    # Browser DNA (Headers) load ho rahe hain
-    headers = parse_curl_headers(curl_text)
-    
-    # Agar galti se sirf token bhej diya, toh fallback logic
-    if 'x-access-token' not in [k.lower() for k in headers.keys()]:
-        clean_token = ''.join(curl_text.split())
-        headers = {
-            'x-access-token': clean_token,
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Origin': 'https://web.classplusapp.com',
-            'Referer': 'https://web.classplusapp.com/'
-        }
+    clean_token = ''.join(user_token.split())
+
+    # आपके स्क्रीनशॉट की 100% हूबहू कॉपी (कोई अंतर नहीं)
+    headers = {
+        'Accept': 'application/json, text/plain, */*',
+        'Accept-Encoding': 'gzip, deflate, br, zstd',
+        'Accept-Language': 'en',
+        'Dnt': '1',
+        'Origin': 'https://web.classplusapp.com',
+        'Priority': 'u=1, i',
+        'Referer': 'https://web.classplusapp.com/',
+        'Region': 'IN',
+        'Sec-Ch-Ua': '"Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"',
+        'Sec-Ch-Ua-Mobile': '?0',
+        'Sec-Ch-Ua-Platform': '"Windows"',
+        'Sec-Fetch-Dest': 'empty',
+        'Sec-Fetch-Mode': 'cors',
+        'Sec-Fetch-Site': 'same-site',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36',
+        'X-Access-Token': clean_token
+    }
 
     api_url = f'https://api.classplusapp.com/cams/uploader/video/jw-signed-url?url={video_url}'
     
     try:
-        # Impersonating Real Chrome WAF Bypass
+        # Chrome 120 impersonation TLS fingerprinting को चकमा देने के लिए
         response_obj = spoof_requests.get(api_url, headers=headers, impersonate="chrome120")
         response = response_obj.json()
     except Exception as e:
-        return {"error": f"Firewall Blocked Request: {e}"}
+        return {"error": f"Request Blocked: {e}"}
 
     if response.get('status') != 'ok':
         return {"error": f"API Error: {response.get('error', response)}"}
@@ -61,7 +51,7 @@ def generate_drm_keys(video_url, curl_text):
     mpd = response['drmUrls']['manifestUrl']
     lic = response['drmUrls']['licenseUrl']
     
-    mpd_response = spoof_requests.get(mpd, impersonate="chrome120")
+    mpd_response = spoof_requests.get(mpd, headers=headers, impersonate="chrome120")
     soup = BeautifulSoup(mpd_response.text, 'xml')
 
     uuid_tag = soup.find('ContentProtection', attrs={'schemeIdUri': 'urn:uuid:edef8ba9-79d6-4ace-a3c8-27dcd51d21ed'})
