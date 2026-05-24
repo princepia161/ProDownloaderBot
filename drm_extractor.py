@@ -19,18 +19,29 @@ def generate_drm_keys(video_url, user_token):
     ClassPlus वीडियो URL और यूज़र द्वारा दिए गए Token का उपयोग करके DRM Keys निकालता है।
     """
     wvd = wvd_check()
+    
+    # 1. Token Safai: Telegram द्वारा जोड़े गए एक्स्ट्रा स्पेस या नई लाइन को हटाना
+    clean_token = user_token.strip()
 
-    # Dynamic Token from User Input
+    # 2. Real Browser Headers: Classplus को लगेगा कि असली इंसान Chrome से वीडियो देख रहा है
     headers = {
-        'x-access-token': user_token
+        'x-access-token': clean_token,
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36',
+        'Accept': 'application/json, text/plain, */*',
+        'Origin': 'https://web.classplusapp.com',
+        'Referer': 'https://web.classplusapp.com/'
     }
 
     # API Call for JW-Signed URL
     api_url = f'https://api.classplusapp.com/cams/uploader/video/jw-signed-url?url={video_url}'
-    response = requests.get(api_url, headers=headers).json()
+    
+    try:
+        response = requests.get(api_url, headers=headers).json()
+    except Exception as e:
+        return {"error": f"API Request Failed: {e}"}
 
     if response.get('status') != 'ok':
-        return {"error": f"Failed to fetch DRM URLs. Invalid Token or API Error. Response: {response}"}
+        return {"error": f"API Error: {response}"}
 
     mpd = response['drmUrls']['manifestUrl']
     lic = response['drmUrls']['licenseUrl']
