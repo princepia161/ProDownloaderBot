@@ -8,40 +8,36 @@ from pywidevine.pssh import PSSH
 
 def wvd_check():
     try:
-        # WVDs फोल्डर से .wvd फाइल खोजें
-        extracted_device = glob.glob(f'{os.getcwd()}/WVDs/*.wvd')[0]
-        return extracted_device
+        return glob.glob(f'{os.getcwd()}/WVDs/*.wvd')[0]
     except IndexError:
         raise FileNotFoundError("WVD file not found in 'WVDs' folder. Please upload it.")
 
 def generate_drm_keys(video_url, user_token):
-    """
-    ClassPlus वीडियो URL और यूज़र द्वारा दिए गए Token का उपयोग करके DRM Keys निकालता है।
-    """
     wvd = wvd_check()
     
-    # 1. Token Safai: Telegram द्वारा जोड़े गए एक्स्ट्रा स्पेस या नई लाइन को हटाना
-    clean_token = user_token.strip()
+    # 1. Token Cleanup: टेलीग्राम द्वारा डाले गए किसी भी स्पेस या नई लाइन को पूरी तरह खत्म करना
+    clean_token = ''.join(user_token.split())
 
-    # 2. Real Browser Headers: Classplus को लगेगा कि असली इंसान Chrome से वीडियो देख रहा है
+    # 2. Advance Headers: Classplus को 100% असली ब्राउज़र होने का यकीन दिलाना
     headers = {
         'x-access-token': clean_token,
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36',
         'Accept': 'application/json, text/plain, */*',
         'Origin': 'https://web.classplusapp.com',
-        'Referer': 'https://web.classplusapp.com/'
+        'Referer': 'https://web.classplusapp.com/',
+        'Api-Version': '50',
+        'Device-Id': 'Web-Browser'
     }
 
-    # API Call for JW-Signed URL
     api_url = f'https://api.classplusapp.com/cams/uploader/video/jw-signed-url?url={video_url}'
     
     try:
         response = requests.get(api_url, headers=headers).json()
     except Exception as e:
-        return {"error": f"API Request Failed: {e}"}
+        return {"error": f"API Request Blocked. Error: {e}"}
 
     if response.get('status') != 'ok':
-        return {"error": f"API Error: {response}"}
+        return {"error": f"API Error: {response.get('error', 'Bad token')} - Server rejected the IP or Token."}
 
     mpd = response['drmUrls']['manifestUrl']
     lic = response['drmUrls']['licenseUrl']
@@ -49,14 +45,12 @@ def generate_drm_keys(video_url, user_token):
     mpd_response = requests.get(mpd)
     soup = BeautifulSoup(mpd_response.text, 'xml')
 
-    # Extract PSSH
     uuid_tag = soup.find('ContentProtection', attrs={'schemeIdUri': 'urn:uuid:edef8ba9-79d6-4ace-a3c8-27dcd51d21ed'})
     if not uuid_tag or not uuid_tag.find('cenc:pssh'):
-        return {"error": "PSSH not found in MPD manifest."}
+        return {"error": "PSSH not found in MPD."}
         
     pssh_data = uuid_tag.find('cenc:pssh').text
 
-    # PyWidevine Decryption Logic
     ipssh = PSSH(pssh_data)
     device = Device.load(wvd)
     cdm = Cdm.from_device(device)
@@ -67,7 +61,7 @@ def generate_drm_keys(video_url, user_token):
     
     if licence.status_code != 200:
         cdm.close(session_id)
-        return {"error": f"License request failed with status {licence.status_code}"}
+        return {"error": f"License request failed (Status {licence.status_code})."}
 
     cdm.parse_license(session_id, licence.content)
 
